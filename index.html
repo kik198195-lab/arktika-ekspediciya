@@ -461,7 +461,7 @@ const arrow = new THREE.Group(); { const a = mesh(new THREE.ConeGeometry(.55, 1.
 const P = {
   meteo: [-12, -14], hut: [-20, -25], birds: [-56, -30], cliff: [-72, -48], chain: [84, 4], seals: [42, -60], sealSpot: [52, -72],
   blizzard: [-26, 26], den: [-62, 66], clean: [56, 46], cleanC: [64, 60], ship: [0, -93], start: [0, 42],
-  plants: { lichen: [26, -12], moss: [-44, 4], poppy: [30, 24] }
+  plants: { lichen: [26, -12], moss: [33, -7], poppy: [26, -2] }
 };
 const avoid = [P.meteo, P.hut, P.birds, P.cliff, P.chain, P.seals, P.sealSpot, P.blizzard, P.den, P.clean, P.cleanC, P.ship, P.start, [0, 0], ...Object.values(P.plants), [-22, 46], [-38, 56], [-52, 42], [-66, 52]];
 // scatter rocks
@@ -531,7 +531,7 @@ const ship = new THREE.Group(); {
 
 /* ================= STATE ================= */
 const state = { mode: 'start', lock: true, active: null, pick: null, freePick: [], mistakes: 0, stars: 0, walkTarget: null, camO: null, goal: null,
-  blizzard: 0, blizT: 0, env: { elev: 8, az: -.55 }, envT: { elev: 8, az: -.55 }, polarDay: false, plantsFound: 0, shipOpen: false, moving: false };
+  blizzard: 0, blizT: 0, env: { elev: 8, az: -.55 }, envT: { elev: 8, az: -.55 }, polarDay: false, plantsFound: 0, shipOpen: true, moving: false };  // ледокол доступен сразу — можно уехать домой, пропустив задания
 function mistake() { state.mistakes++; }
 function camGo(pos, look) { state.camO = { pos: new V3(...pos), look: new V3(...look) }; }
 
@@ -544,7 +544,7 @@ const missions = [
   { id: 'blizzard', name: 'Пурга у берлоги', icon: '🐻‍❄️', color: 0xffffff, pos: P.blizzard, run: mBlizzard },
   { id: 'clean', name: 'Уборка Арктики', icon: '♻️', color: 0x7cff7c, pos: P.clean, run: mClean },
   { id: 'plants', name: 'Растения (0/3)', icon: '🌿', color: 0, pos: null },
-  { id: 'ship', name: 'Ледокол домой', icon: '🚢', color: 0xff6b6b, pos: P.ship, run: mShip, locked: true },
+  { id: 'ship', name: 'Ледокол домой', icon: '🚢', color: 0xff6b6b, pos: P.ship, run: mShip },
 ];
 function makeBeacon(m) {
   const g = new THREE.Group(); g.position.set(m.pos[0], hAt(m.pos[0], m.pos[1]), m.pos[1]);
@@ -652,8 +652,8 @@ function finishMission(m, extraStar) {
   checkShip(); renderList();
 }
 function checkShip() {
-  if (!state.shipOpen && missions.filter(m => m.id !== 'ship').every(m => m.done)) {
-    state.shipOpen = true; missions.find(m => m.id === 'ship').locked = false;
+  if (!state.allDone && missions.filter(m => m.id !== 'ship').every(m => m.done)) {
+    state.allDone = true;
     setTimeout(() => { toast('🚢 Все задания выполнены! Ледокол ждёт тебя у причала на севере острова.', 4500); sOk(); }, 600);
   }
 }
@@ -858,8 +858,8 @@ async function mBlizzard(m) {
 
 /* ---------- 6. Уборка ---------- */
 async function mClean(m) {
-  await say('♻️ Генеральная уборка Арктики', 'С кораблей в воду и на берег попадает <b>мусор</b>, а на некоторых островах люди устроили свалки опасных отходов. Сейчас идёт <b>«генеральная уборка Арктики»</b> — помоги!<br>Собери весь мусор на берегу за <b>90 секунд</b> — просто подойди к нему.', 'Начать уборку ⏱');
-  const types = ['barrel', 'bottle', 'bag', 'tire', 'can', 'barrel', 'bottle', 'bag', 'can', 'tire'];
+  await say('♻️ Генеральная уборка Арктики', 'С кораблей в воду и на берег попадает <b>мусор</b>, а на некоторых островах люди устроили свалки опасных отходов. Сейчас идёт <b>«генеральная уборка Арктики»</b> — помоги!<br>Собери мусор на берегу за <b>45 секунд</b> — просто подойди к нему.', 'Начать уборку ⏱');
+  const types = ['barrel', 'bottle', 'bag', 'tire', 'can'];
   const trash = types.map((ty, i) => {
     const g = new THREE.Group(); let o;
     if (ty === 'barrel') { o = mesh(new THREE.CylinderGeometry(.6, .6, 1.4, 12), M(0xb4541c, { metalness: .4 }), 0, .6, 0, g); o.rotation.z = Math.PI / 2; mesh(new THREE.TorusGeometry(.62, .05, 4, 14), M(0x5a2a0d), .3, .6, 0, g).rotation.y = Math.PI / 2; }
@@ -867,7 +867,7 @@ async function mClean(m) {
     if (ty === 'bag') { o = mesh(jitter(new THREE.IcosahedronGeometry(.6, 0), .3), M(0xeeeeee, { transparent: true, opacity: .9 }), 0, .4, 0, g); o.scale.y = .6; }
     if (ty === 'tire') { o = mesh(new THREE.TorusGeometry(.55, .22, 8, 16), M(0x1e1e1e), 0, .25, 0, g); o.rotation.x = Math.PI / 2; }
     if (ty === 'can') { o = mesh(new THREE.CylinderGeometry(.2, .2, .5, 10), M(0xe03131, { metalness: .7, roughness: .3 }), 0, .2, 0, g); o.rotation.z = Math.PI / 2; }
-    let x, z; do { const a = rnd() * Math.PI * 2, r = 3 + rnd() * 17; x = P.cleanC[0] + Math.cos(a) * r; z = P.cleanC[1] + Math.sin(a) * r; } while (Math.hypot(x, z) > 99);
+    let x, z; do { const a = rnd() * Math.PI * 2, r = 3 + rnd() * 6; x = P.cleanC[0] + Math.cos(a) * r; z = P.cleanC[1] + Math.sin(a) * r; } while (Math.hypot(x, z) > 99);
     g.position.set(x, hAt(x, z), z); g.rotation.y = rnd() * 6; g.userData.walkTo = true; scene.add(g);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, .6, 6, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6b6b, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); beam.position.y = 3; g.add(beam);
     return g;
@@ -875,11 +875,11 @@ async function mClean(m) {
   state.freePick = trash; state.lock = false;
   instruct('♻️ Собери мусор', 'Подходи к мусору (нажми на него или на снег рядом). Красные лучи подсказывают, где он лежит.');
   const timerEl = $('#timer'); timerEl.style.display = 'block';
-  let left = 90, got = 0, ended = false;
+  let left = 45, got = 0, ended = false;
   const upd = (dt) => {
-    if (ended) return; left -= dt; timerEl.textContent = `⏱ ${Math.max(0, Math.ceil(left))}  🗑 ${got}/10`;
+    if (ended) return; left -= dt; timerEl.textContent = `⏱ ${Math.max(0, Math.ceil(left))}  🗑 ${got}/${trash.length}`;
     for (const g of trash) if (!g.userData.got && player.position.distanceTo(g.position) < 2.6) { g.userData.got = true; got++; sPick(); tone(700 + got * 60, .12, 'triangle', .08); const st = performance.now(); const fly = () => { const k = (performance.now() - st) / 500; if (k >= 1) { scene.remove(g); updaters.delete(fly); return; } g.position.y += .15; g.scale.setScalar(1 - k); }; updaters.add(fly); }
-    if (got === 10) ended = true;
+    if (got === trash.length) ended = true;
   };
   updaters.add(upd);
   let nearest = () => trash.filter(g => !g.userData.got).sort((a, b) => a.position.distanceTo(player.position) - b.position.distanceTo(player.position))[0];
@@ -888,7 +888,7 @@ async function mClean(m) {
   updaters.delete(upd); updaters.delete(goalUpd); timerEl.style.display = 'none'; state.freePick = []; state.goal = null; state.lock = true; state.walkTarget = null;
   const fast = left > 0;
   confetti(24); sOk();
-  await say(fast ? '⭐ Берег чистый — и вовремя!' : '✅ Берег чистый!', fast ? 'Ты успел за 90 секунд — получаешь <b>дополнительную звезду</b>! 🌟' : 'Немного не успел за 90 секунд, но весь мусор собран. Молодец!');
+  await say(fast ? '⭐ Берег чистый — и вовремя!' : '✅ Берег чистый!', fast ? 'Ты успел за 45 секунд — получаешь <b>дополнительную звезду</b>! 🌟' : 'Немного не успел за 45 секунд, но весь мусор собран. Молодец!');
   await sortTask([
     { t: 'Охота на моржей и белых медведей', g: 0 }, { t: 'Мусор с кораблей', g: 0 }, { t: 'Свалки опасных отходов', g: 0 }, { t: 'Хищнический лов рыбы', g: 0 },
     { t: 'Заповедник «Остров Врангеля»', g: 1 }, { t: '«Генеральная уборка Арктики»', g: 1 }, { t: 'Красная книга России', g: 1 }, { t: 'Программа «Белый медведь»', g: 1 },
@@ -937,10 +937,17 @@ addPlant('lichen', '🍂 Лишайник', 'На камнях островов 
 addPlant('moss', '🌱 Мох', 'Кое-где растут <b>мхи</b>. Они растут на камнях и земле и образуют зелёные коврики.', g => { for (let i = 0; i < 12; i++) { const s = mesh(S(.35 + rnd() * .3, 8, 6), M(i % 3 ? 0x5fa83a : 0x7cc04a), (rnd() - .5) * 2.4, .15, (rnd() - .5) * 2.4, g); s.scale.y = .55; } });
 addPlant('poppy', '🌼 Полярный мак', '<b>Полярный мак</b> — маленький цветок ледяной зоны. Растения Арктики низкие, с маленькими листьями, быстро растут коротким летом и устойчивы к холоду.', g => { for (let i = 0; i < 4; i++) { const f = new THREE.Group(); f.position.set((rnd() - .5) * 1.8, 0, (rnd() - .5) * 1.8); mesh(new THREE.CylinderGeometry(.04, .05, .9, 5), M(0x4caf50), 0, .45, 0, f); for (let k = 0; k < 5; k++) { const p = mesh(S(.22, 8, 6), M(0xffd43b), Math.cos(k * 1.26) * .2, .95, Math.sin(k * 1.26) * .2, f); p.scale.set(1, .35, 1); } mesh(S(.1, 6, 5), M(0xf08c00), 0, 1, 0, f); mesh(S(.25, 6, 5), M(0x6ab04c), 0, .1, 0, f).scale.y = .4; g.add(f); } });
 async function findPlant(pl) {
-  pl.found = true; state.lock = true; state.walkTarget = null; state.plantFinding = true; sOk(); confetti(10);
-  removeLabel(pl.L); pl.spark.visible = false; state.plantsFound++;
-  const m = missions.find(x => x.id === 'plants'); m.name = `Растения (${state.plantsFound}/3)`;
-  await say(`Находка! ${pl.name}`, pl.fact + (state.plantsFound < 3 ? `<br><br>Найдено растений: <b>${state.plantsFound} из 3</b>. Ищи ✨ возле камней!` : ''));
+  // все растения растут рядом: дошёл до одного — по очереди знакомимся со всеми, ходить туда-сюда не нужно
+  state.lock = true; state.walkTarget = null; state.plantFinding = true;
+  const m = missions.find(x => x.id === 'plants');
+  const queue = [pl, ...plants.filter(q => !q.found && q !== pl)];
+  for (const q of queue) {
+    q.found = true; sOk(); confetti(10); removeLabel(q.L); q.spark.visible = false; state.plantsFound++;
+    m.name = `Растения (${state.plantsFound}/3)`; renderList();
+    const gp = q.g.position; camGo([gp.x + 4, gp.y + 5, gp.z + 7], [gp.x, gp.y + .6, gp.z]);
+    await say(`Находка ${state.plantsFound} из 3: ${q.name}`, q.fact, state.plantsFound < 3 ? 'Следующее растение ➜' : 'Дальше ➜');
+  }
+  state.camO = null;
   if (state.plantsFound === 3) { await say('⭐ Все растения найдены!', '<div class="fact">🌿 К суровым условиям ледяной зоны приспособились немногие живые организмы. На камнях — лишайники, кое-где — мхи, полярный мак и некоторые другие растения. Растений здесь очень мало.</div>'); m.done = true; state.stars++; checkShip(); }
   state.lock = false; state.plantFinding = false; renderList();
 }
