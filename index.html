@@ -112,7 +112,31 @@ input[type=range]::-moz-range-thumb{width:32px;height:32px;border-radius:50%;bac
 <div id="joy"><div id="knob"></div></div>
 <div id="globeUI"></div>
 <div id="fade"></div>
-<button id="nextBtn" class="btn green" style="display:none;position:fixed;right:16px;bottom:16px;z-index:40;font-size:18px;padding:12px 20px">➡ Следующее задание</button>
+<div id="tools">
+  <button class="tb" id="menuBtn">☰ <span>Меню</span></button>
+  <button class="tb" id="restartBtn">↺ <span>Заново</span></button>
+  <button class="tb green" id="nextBtn" style="display:none">➡ <span>Далее</span></button>
+</div>
+<div id="menu"><div class="mcard">
+  <h2>☰ Меню</h2>
+  <div class="mgrid" id="menuList"></div>
+  <div class="mbtns"><button class="btn" id="menuClose">▶ Продолжить</button><button class="btn red" id="menuRestart">↺ Начать заново</button></div>
+</div></div>
+<style>
+#tools{position:fixed;top:56px;left:10px;z-index:45;display:none;gap:8px}
+#tools .tb{font:inherit;font-weight:900;font-size:16px;border:0;border-radius:14px;padding:8px 12px;cursor:pointer;color:#fff;background:rgba(8,28,58,.78);border:2px solid rgba(255,255,255,.3);box-shadow:0 4px 0 rgba(0,0,0,.25)}
+#tools .tb.green{background:linear-gradient(180deg,#3ddc84,#1f9d55);border-color:#7ff0b0}
+#tools .tb:active{transform:translateY(3px);box-shadow:none}
+#menu{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(4,12,30,.72);padding:14px}
+#menu.show{display:flex}
+#menu .mcard{background:linear-gradient(160deg,#ffffff,#e6f4ff);color:#0d2b4e;border-radius:24px;padding:18px;max-width:520px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+#menu h2{margin:0 0 10px;font-size:24px}
+#menu .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#menu .mi{font:inherit;font-weight:800;font-size:16px;text-align:left;border:0;border-radius:14px;padding:10px 12px;background:#fff;box-shadow:0 3px 0 #a9cfee;cursor:pointer;color:#0d2b4e}
+#menu .mi.done{opacity:.55}
+#menu .mbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+@media (max-width:760px){#tools{top:50px}#tools .tb{font-size:14px;padding:7px 10px}#tools .tb span{display:none}#menu .mgrid{grid-template-columns:1fr}}
+</style>
 <div id="edge"><span class="a">➤</span><span class="t"></span></div>
 <style>
 #edge{position:fixed;z-index:6;display:none;align-items:center;gap:8px;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
@@ -1087,6 +1111,17 @@ function skipTarget() {  // следующее невыполненное зад
   const i = missions.indexOf(state.active);
   return list.find(m => missions.indexOf(m) > i && m !== state.active) || list.find(m => m !== state.active) || null;
 }
+/* меню и «начать заново» */
+function restartGame() { if (!confirm('Начать игру заново?')) return; try { sessionStorage.removeItem('arctic_jump'); } catch (e) {} location.reload(); }
+$('#restartBtn').onclick = restartGame; $('#menuRestart').onclick = restartGame;
+$('#menuBtn').onclick = () => {
+  sPick();
+  $('#menuList').innerHTML = state.mode === 'world' ? missions.map(m => `<button class="mi ${m.done ? 'done' : ''}" data-id="${m.id}">${m.icon} ${m.name}${m.done ? ' ✅' : ''}</button>`).join('') : '<div style="grid-column:1/-1;font-weight:700">Сначала найди Арктику на глобусе 🌍</div>';
+  $('#menuList').querySelectorAll('.mi').forEach(b => b.onclick = () => { $('#menu').classList.remove('show'); const li = mlist.querySelector(`li[data-id="${b.dataset.id}"]`); if (li) li.click(); });
+  $('#menu').classList.add('show');
+};
+$('#menuClose').onclick = () => $('#menu').classList.remove('show');
+$('#menu').addEventListener('click', e => { if (e.target.id === 'menu') $('#menu').classList.remove('show'); });
 $('#edge').onclick = () => { if (edgeGoal && !state.lock && state.mode === 'world') { state.walkTarget = new V3(edgeGoal.p[0], 0, edgeGoal.p[1]); marker(state.walkTarget); sPick(); } };
 $('#nextBtn').onclick = () => {
   if (state.jumping || state.mode !== 'world') return;
@@ -1101,6 +1136,8 @@ function lerpAngle(a, b, k) { let d = b - a; while (d > Math.PI) d -= Math.PI * 
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  { const tw = (state.mode === 'globe' || state.mode === 'world') && $('#diploma').style.display !== 'flex' ? 'flex' : 'none'; const T = $('#tools'); if (T.style.display !== tw) T.style.display = tw; labelsEl.style.visibility = state.mode === 'world' ? 'visible' : 'hidden';
+    const bg = document.querySelector('.badges'); if (bg && $('#hud').style.display === 'flex') { const tp = Math.round(bg.getBoundingClientRect().bottom + 8) + 'px'; if (T.style.top !== tp) T.style.top = tp; } }
   if (state.mode === 'start' || state.mode === 'globe') {
     if (!down && !globeDone) spin.rotation.y += dt * .08;
     renderer.render(gScene, gCam); return;
@@ -1153,7 +1190,7 @@ function loop() {
   // updaters
   for (const f of [...updaters]) f(dt, t);
   { const g = state.lock ? null : state.goal ? { p: [state.goal.x, state.goal.z], name: state.goalName || '🎯 Сюда' } : state.active ? null : nextGoal(); updateTrail(g, t); updateEdge(g);
-    const nb = $('#nextBtn'), want = (!state.jumping && (state.active ? !!skipTarget() : !!g)) ? 'block' : 'none'; if (nb.style.display !== want) nb.style.display = want;
+    const nb = $('#nextBtn'), want = (!state.jumping && (state.active ? !!skipTarget() : !!g)) ? 'inline-block' : 'none'; if (nb.style.display !== want) nb.style.display = want;
     missions.forEach(m => { if (m.beam && !m.done) { const isG = g && g.m === m; m.beam.scale.set(isG ? 2.2 : 1, 1, isG ? 2.2 : 1); m.beam.material.opacity = isG ? .45 + Math.sin(t * 4) * .15 : .07; } }); }
   // camera
   let dp, dl;
