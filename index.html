@@ -115,7 +115,7 @@ input[type=range]::-moz-range-thumb{width:32px;height:32px;border-radius:50%;bac
 <button id="nextBtn" class="btn green" style="display:none;position:fixed;right:16px;bottom:16px;z-index:40;font-size:18px;padding:12px 20px">➡ Следующее задание</button>
 <div id="edge"><span class="a">➤</span><span class="t"></span></div>
 <style>
-#edge{position:fixed;z-index:6;display:none;align-items:center;gap:8px;transform:translate(-50%,-50%);pointer-events:none;
+#edge{position:fixed;z-index:6;display:none;align-items:center;gap:8px;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
   background:rgba(255,210,63,.95);color:#2b1d00;font-weight:900;font-size:18px;padding:8px 14px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.35);white-space:nowrap;animation:edgeP 1s ease-in-out infinite}
 #edge .a{display:inline-block;font-size:22px;color:#c0392b}
 #edge.in{background:rgba(255,255,255,.95)}
@@ -628,10 +628,11 @@ function updateTrail(g, t) {
   trail.instanceMatrix.needsUpdate = true;
 }
 // стрелка у края экрана, если цель не видна
+let edgeGoal = null;
 function updateEdge(g) {
   const e = $('#edge');
   if (!g || state.lock) { e.style.display = 'none'; return; }
-  const p = new V3(g.p[0], hAt(g.p[0], g.p[1]) + 3, g.p[1]), d = Math.round(dist2(g.p));
+  edgeGoal = g; const p = new V3(g.p[0], hAt(g.p[0], g.p[1]) + 3, g.p[1]), d = Math.round(dist2(g.p));
   const v = p.clone().project(cam); const behind = v.z > 1;
   let x = (v.x + 1) / 2 * innerWidth, y = (1 - v.y) / 2 * innerHeight;
   const m = 70, inside = !behind && x > m && x < innerWidth - m && y > m && y < innerHeight - m;
@@ -827,21 +828,36 @@ async function mBlizzard(m) {
     ['Зачем белому медведю широкие лапы?', ['Помогают плавать', 'Чтобы лазить по деревьям', 'Чтобы рыть норы для еды'], 'Белый медведь отлично чувствует себя в ледяной воде…'],
     ['Зачем белому медведю белый мех?', ['Скрывает среди снегов и льдов — можно незаметно подобраться к добыче', 'Чтобы лучше греться на солнце', 'Чтобы его было видно издалека'], 'Белое на белом снегу — заметно ли?'],
   ];
-  const cps = [.3, .6, .86].map((t, i) => { const p = curve.getPointAt(t); const g = new THREE.Group(); g.position.set(p.x, hAt(p.x, p.z) + .2, p.z); const r = mesh(new THREE.TorusGeometry(1.6, .15, 6, 28), new THREE.MeshBasicMaterial({ color: 0xffd23f }), 0, 1, 0, g); r.rotation.x = Math.PI / 2; const L = addLabel(g, '❄️ ?', 3, 'q'); scene.add(g); updaters.add((dt, tt) => { r.rotation.z = tt; r.position.y = 1 + Math.sin(tt * 3) * .2; }); return { g, L, q: qs[i], done: false }; });
+  // большое яркое кольцо, видно сквозь метель; нажми на него — герой сам пойдёт туда
+  const makeCp = (x, z, label) => {
+    const g = new THREE.Group(); g.position.set(x, hAt(x, z) + .2, z); g.userData.walkTo = true;
+    const bright = c => new THREE.MeshBasicMaterial({ color: c, fog: false, transparent: true, opacity: .95, depthWrite: false });
+    const r = mesh(new THREE.TorusGeometry(2.4, .28, 8, 36), bright(0xffd23f), 0, 1, 0, g); r.rotation.x = Math.PI / 2;
+    const disk = mesh(new THREE.CircleGeometry(2.6, 32), bright(0xffe680), 0, .08, 0, g); disk.rotation.x = -Math.PI / 2; disk.material.opacity = .45;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 30, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd23f, fog: false, transparent: true, opacity: .3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    beam.position.y = 15; g.add(beam);
+    const L = addLabel(g, label, 3.6, 'q'); L.far = 400; scene.add(g);
+    const u = (dt, tt) => { r.rotation.z = tt; r.position.y = 1 + Math.sin(tt * 3) * .25; const s = 1 + Math.sin(tt * 4) * .08; disk.scale.set(s, s, s); };
+    updaters.add(u); g.userData.upd = u; state.freePick.push(g);
+    return { g, L };
+  };
+  const dropCp = c => { removeLabel(c.L); scene.remove(c.g); updaters.delete(c.g.userData.upd); state.freePick = state.freePick.filter(o => o !== c.g); };
+  const cps = [.3, .6, .86].map((t, i) => { const p = curve.getPointAt(t); return { ...makeCp(p.x, p.z, `❄️ Загадка ${i + 1} — нажми`), q: qs[i], done: false }; });
   const denPos = curve.getPointAt(1);
-  instruct('🐾 Иди по следам', 'В пурге почти ничего не видно! Веди героя по <b>оранжевым стрелкам</b> на снегу к <b>жёлтому кольцу ❄️</b> — там загадка. Всего 3 загадки, потом — берлога.');
+  instruct('🐾 Иди по следам', 'В пурге почти ничего не видно! <b>Нажми на жёлтое кольцо ❄️</b> — полярник сам дойдёт до него (или веди его по оранжевым стрелкам). Всего 3 загадки, потом — берлога.');
   state.lock = false;
   for (const [i, cp] of cps.entries()) {
     state.goal = cp.g.position; state.goalName = `❄️ Загадка ${i + 1} из 3`;
     await new Promise(res => { const f = () => { if (player.position.distanceTo(cp.g.position) < 2.6) { updaters.delete(f); res(); } }; updaters.add(f); });
     state.lock = true; state.walkTarget = null; sPick();
     await ask(cp.q[0], cp.q[1], cp.q[2], '❄️ Загадка пурги');
-    removeLabel(cp.L); scene.remove(cp.g); state.lock = false;
-    instruct('🐾 Иди дальше', i < 2 ? `Отлично! Иди по оранжевым стрелкам к следующему кольцу ❄️ (загадка ${i + 2} из 3).` : 'Молодец! Последний рывок — стрелки ведут к <b>берлоге</b> 🐻‍❄️.');
+    dropCp(cp); state.lock = false;
+    instruct('🐾 Иди дальше', i < 2 ? `Отлично! Нажми на следующее жёлтое кольцо ❄️ (загадка ${i + 2} из 3).` : 'Молодец! Нажми на кольцо у <b>берлоги</b> 🐻‍❄️.');
   }
+  const denCp = makeCp(denPos.x, denPos.z, '🐻‍❄️ Берлога — нажми');
   state.goal = denPos; state.goalName = '🐻‍❄️ Берлога';
   await new Promise(res => { const f = () => { if (Math.hypot(player.position.x - denPos.x, player.position.z - denPos.z) < 3) { updaters.delete(f); res(); } }; updaters.add(f); });
-  state.lock = true; state.walkTarget = null; state.goal = null; state.goalName = null;
+  state.lock = true; state.walkTarget = null; state.goal = null; state.goalName = null; dropCp(denCp);
   // bears
   const mom = makeBear(.9); const dp = den.position; const dir = new V3(Math.sin(den.rotation.y), 0, Math.cos(den.rotation.y));
   mom.position.copy(dp).add(dir.clone().multiplyScalar(4.2)); mom.position.y = hAt(mom.position.x, mom.position.z); mom.rotation.y = den.rotation.y; scene.add(mom);
@@ -858,7 +874,14 @@ async function mBlizzard(m) {
 
 /* ---------- 6. Уборка ---------- */
 async function mClean(m) {
-  await say('♻️ Генеральная уборка Арктики', 'С кораблей в воду и на берег попадает <b>мусор</b>, а на некоторых островах люди устроили свалки опасных отходов. Сейчас идёт <b>«генеральная уборка Арктики»</b> — помоги!<br>Собери мусор на берегу за <b>45 секунд</b> — просто подойди к нему.', 'Начать уборку ⏱');
+  await say('♻️ Генеральная уборка Арктики', 'С кораблей в воду и на берег попадает <b>мусор</b>, а на некоторых островах люди устроили свалки опасных отходов. Сейчас идёт <b>«генеральная уборка Арктики»</b> — помоги!<br>Отвечай на вопросы: за каждый верный ответ мусор сам полетит в <b>корзину</b> ♻️.', 'Начать уборку ♻️');
+  // мусор и корзина прямо рядом с героем — ходить не нужно
+  const pl0 = player.position.clone();
+  const bin = new THREE.Group(); bin.position.set(pl0.x - 3, hAt(pl0.x - 3, pl0.z - 2), pl0.z - 2);
+  mesh(new THREE.CylinderGeometry(1.1, .85, 1.8, 16, 1, true), new THREE.MeshStandardMaterial({ color: 0x2f9e44, side: THREE.DoubleSide }), 0, .9, 0, bin);
+  mesh(new THREE.TorusGeometry(1.1, .1, 6, 20), M(0x1b6e2e), 0, 1.8, 0, bin).rotation.x = Math.PI / 2;
+  mesh(new THREE.CircleGeometry(.85, 16), M(0x14532d), 0, .05, 0, bin).rotation.x = -Math.PI / 2;
+  scene.add(bin); const binL = addLabel(bin, '♻️ Корзина <b id="binCnt">0/5</b>', 3, 'q');
   const types = ['barrel', 'bottle', 'bag', 'tire', 'can'];
   const trash = types.map((ty, i) => {
     const g = new THREE.Group(); let o;
@@ -867,28 +890,36 @@ async function mClean(m) {
     if (ty === 'bag') { o = mesh(jitter(new THREE.IcosahedronGeometry(.6, 0), .3), M(0xeeeeee, { transparent: true, opacity: .9 }), 0, .4, 0, g); o.scale.y = .6; }
     if (ty === 'tire') { o = mesh(new THREE.TorusGeometry(.55, .22, 8, 16), M(0x1e1e1e), 0, .25, 0, g); o.rotation.x = Math.PI / 2; }
     if (ty === 'can') { o = mesh(new THREE.CylinderGeometry(.2, .2, .5, 10), M(0xe03131, { metalness: .7, roughness: .3 }), 0, .2, 0, g); o.rotation.z = Math.PI / 2; }
-    let x, z; do { const a = rnd() * Math.PI * 2, r = 3 + rnd() * 6; x = P.cleanC[0] + Math.cos(a) * r; z = P.cleanC[1] + Math.sin(a) * r; } while (Math.hypot(x, z) > 99);
-    g.position.set(x, hAt(x, z), z); g.rotation.y = rnd() * 6; g.userData.walkTo = true; scene.add(g);
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(.6, .6, 6, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6b6b, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); beam.position.y = 3; g.add(beam);
+    const a = -.4 + i * .55, x = pl0.x + Math.cos(a) * 4.5, z = pl0.z + Math.sin(a) * 4.5 - 1;
+    g.position.set(x, hAt(x, z), z); g.rotation.y = rnd() * 6; scene.add(g);
     return g;
   });
-  state.freePick = trash; state.lock = false;
-  instruct('♻️ Собери мусор', 'Подходи к мусору (нажми на него или на снег рядом). Красные лучи подсказывают, где он лежит.');
-  const timerEl = $('#timer'); timerEl.style.display = 'block';
-  let left = 45, got = 0, ended = false;
-  const upd = (dt) => {
-    if (ended) return; left -= dt; timerEl.textContent = `⏱ ${Math.max(0, Math.ceil(left))}  🗑 ${got}/${trash.length}`;
-    for (const g of trash) if (!g.userData.got && player.position.distanceTo(g.position) < 2.6) { g.userData.got = true; got++; sPick(); tone(700 + got * 60, .12, 'triangle', .08); const st = performance.now(); const fly = () => { const k = (performance.now() - st) / 500; if (k >= 1) { scene.remove(g); updaters.delete(fly); return; } g.position.y += .15; g.scale.setScalar(1 - k); }; updaters.add(fly); }
-    if (got === trash.length) ended = true;
-  };
-  updaters.add(upd);
-  let nearest = () => trash.filter(g => !g.userData.got).sort((a, b) => a.position.distanceTo(player.position) - b.position.distanceTo(player.position))[0];
-  const goalUpd = () => { const n = nearest(); state.goal = n ? n.position : null; state.goalName = "🗑️ Мусор"; }; updaters.add(goalUpd);
-  await new Promise(res => { const f = () => { if (ended) { updaters.delete(f); res(); } }; updaters.add(f); });
-  updaters.delete(upd); updaters.delete(goalUpd); timerEl.style.display = 'none'; state.freePick = []; state.goal = null; state.lock = true; state.walkTarget = null;
-  const fast = left > 0;
+  camGo([pl0.x + 2, pl0.y + 9, pl0.z + 12], [pl0.x - .5, pl0.y + .8, pl0.z - 1]);
+  const flyToBin = g => new Promise(res => {
+    const from = g.position.clone(), to = bin.position.clone().add(new V3(0, 1.6, 0)), st = performance.now();
+    const f = () => { const k = Math.min(1, (performance.now() - st) / 800);
+      g.position.lerpVectors(from, to, k); g.position.y += Math.sin(k * Math.PI) * 4; g.rotation.x += .2; g.rotation.z += .15;
+      if (k > .8) g.scale.setScalar(1 - (k - .8) * 4.5);
+      if (k >= 1) { updaters.delete(f); scene.remove(g); res(); } };
+    updaters.add(f);
+  });
+  const qs = [
+    ['Что попадает в воду и на берег с кораблей?', ['Мусор', 'Рыба', 'Водоросли'], 'Это и надо убирать!'],
+    ['Почему белые медведи и моржи стали редкими?', ['Люди долгие годы охотились на них', 'Им не хватает снега', 'Они улетели на юг'], 'Вспомни про браконьеров…'],
+    ['Куда занесли редких животных Арктики?', ['В Красную книгу России', 'В книгу сказок', 'В записную книжку'], 'Эта книга — красного цвета.'],
+    ['Как называется работа по очистке островов Арктики от свалок?', ['«Генеральная уборка Арктики»', '«Весёлые старты»', '«Полярная ярмарка»'], 'Как дома перед праздником — большая…'],
+    ['Какой заповедник создан в Арктике?', ['«Остров Врангеля»', '«Остров сокровищ»', '«Остров Мадагаскар»'], 'Его называют «родильным домом» белых медведей.'],
+  ];
+  const mist0 = state.mistakes;
+  for (const [i, q] of qs.entries()) {
+    await ask(q[0], q[1], q[2], `♻️ Уборка: вопрос ${i + 1} из 5`);
+    hidePanel(); sPick(); tone(700 + i * 80, .14, 'triangle', .08);
+    await flyToBin(trash[i]); const c = document.getElementById('binCnt'); if (c) c.textContent = `${i + 1}/5`;
+  }
+  removeLabel(binL); setTimeout(() => scene.remove(bin), 2500); state.camO = null;
+  const fast = state.mistakes === mist0;
   confetti(24); sOk();
-  await say(fast ? '⭐ Берег чистый — и вовремя!' : '✅ Берег чистый!', fast ? 'Ты успел за 45 секунд — получаешь <b>дополнительную звезду</b>! 🌟' : 'Немного не успел за 45 секунд, но весь мусор собран. Молодец!');
+  await say(fast ? '⭐ Берег чистый — без ошибок!' : '✅ Берег чистый!', fast ? 'Все ответы верные — получаешь <b>дополнительную звезду</b>! 🌟' : 'Весь мусор в корзине. Молодец!');
   await sortTask([
     { t: 'Охота на моржей и белых медведей', g: 0 }, { t: 'Мусор с кораблей', g: 0 }, { t: 'Свалки опасных отходов', g: 0 }, { t: 'Хищнический лов рыбы', g: 0 },
     { t: 'Заповедник «Остров Врангеля»', g: 1 }, { t: '«Генеральная уборка Арктики»', g: 1 }, { t: 'Красная книга России', g: 1 }, { t: 'Программа «Белый медведь»', g: 1 },
@@ -1056,6 +1087,7 @@ function skipTarget() {  // следующее невыполненное зад
   const i = missions.indexOf(state.active);
   return list.find(m => missions.indexOf(m) > i && m !== state.active) || list.find(m => m !== state.active) || null;
 }
+$('#edge').onclick = () => { if (edgeGoal && !state.lock && state.mode === 'world') { state.walkTarget = new V3(edgeGoal.p[0], 0, edgeGoal.p[1]); marker(state.walkTarget); sPick(); } };
 $('#nextBtn').onclick = () => {
   if (state.jumping || state.mode !== 'world') return;
   if (state.active || state.lock) { const t = skipTarget(); if (t) switchTo(t.id); return; }
@@ -1064,7 +1096,7 @@ $('#nextBtn').onclick = () => {
 $('#go').onclick = () => { ac(); sOk(); $('#start').style.display = 'none'; state.mode = 'globe'; $('#globeUI').style.display = 'block'; $('#globeUI').innerHTML = '🌍 Покрути глобус и нажми на зону арктических пустынь<small>Подсказка: она на самом севере планеты</small>'; };
 
 /* ================= LOOP ================= */
-const clock = new THREE.Clock(); const camLook = new V3(0, 0, 40); let stepT = 0, lastProg = { t: 0, d: 0 };
+const clock = new THREE.Clock(); const camLook = new V3(0, 0, 40); const camDir = { x: 0, z: 1 }; let stepT = 0, lastProg = { t: 0, d: 0 };
 function lerpAngle(a, b, k) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * k; }
 function loop() {
   requestAnimationFrame(loop);
@@ -1126,7 +1158,13 @@ function loop() {
   // camera
   let dp, dl;
   if (state.camO) { dp = state.camO.pos; dl = state.camO.look; }
-  else { const bzk = state.blizzard; dp = new V3(pl.x, pl.y + lerp(21, 17, bzk), pl.z + lerp(25, 19, bzk)); dl = new V3(pl.x, pl.y + 1.5, pl.z); }
+  else {
+    const bzk = state.blizzard, back = lerp(25, 19, bzk), up = lerp(21, 17, bzk);
+    // в пурге камера встаёт за спину героя, лицом к цели — кольцо всегда впереди
+    let bx = 0, bz = 1; if (state.goal && bzk > .05) { const gx = state.goal.x - pl.x, gz = state.goal.z - pl.z, gd = Math.hypot(gx, gz); if (gd > .5) { bx = -gx / gd; bz = -gz / gd; } }
+    camDir.x = lerp(camDir.x, bx, 1 - Math.exp(-dt * 1.5)); camDir.z = lerp(camDir.z, bz, 1 - Math.exp(-dt * 1.5)); const cl = Math.hypot(camDir.x, camDir.z) || 1;
+    dp = new V3(pl.x + camDir.x / cl * back, pl.y + up, pl.z + camDir.z / cl * back); dl = new V3(pl.x, pl.y + 1.5, pl.z);
+  }
   const ck = 1 - Math.exp(-dt * 2.6); cam.position.lerp(dp, ck); camLook.lerp(dl, ck); cam.lookAt(camLook);
   applyEnv(dt, t);
   updateLabels();
